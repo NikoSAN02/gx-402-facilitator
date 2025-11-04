@@ -123,7 +123,9 @@ app.post('/settle', async (req: Request, res: Response) => {
         res.status(400).json({ error: 'EVM network not supported - no private key configured' });
         return;
       }
-      signer = await createSigner(paymentRequirements.network, EVM_PRIVATE_KEY);
+      // Ensure EVM private key has '0x' prefix
+      const formattedEvmPrivateKey = EVM_PRIVATE_KEY.startsWith('0x') ? EVM_PRIVATE_KEY : `0x${EVM_PRIVATE_KEY}`;
+      signer = await createSigner(paymentRequirements.network, formattedEvmPrivateKey);
     } else if (SupportedSVMNetworks.includes(paymentRequirements.network)) {
       if (!SVM_PRIVATE_KEY) {
         res.status(400).json({ error: 'SVM network not supported - no private key configured' });
