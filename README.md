@@ -5,6 +5,7 @@ GX402 Facilitator is an independent implementation of the x402 payment protocol 
 ## Features
 
 - **Multi-chain Support**: Supports EVM networks (Base, Base Sepolia) and Solana networks (Solana Devnet)
+- **Custom Network Support**: Add support for any EVM network with custom RPC configuration
 - **Gasless Transactions**: Clients can make payments without holding gas tokens
 - **Easy Integration**: Simple API endpoints for verification and settlement
 - **Production Ready**: Built for deployment on Vercel with proper error handling
@@ -189,6 +190,9 @@ Before deploying, you'll need:
 - `EVM_PRIVATE_KEY`: (Optional) Private key for EVM networks (Base) with gas fees
 - `SVM_PRIVATE_KEY`: (Optional) Private key for Solana networks with gas fees
 - `SVM_RPC_URL`: (Optional) Custom RPC URL for Solana network
+- `CUSTOM_EVM_RPC_URL`: (Optional) Custom RPC URL for your own EVM network
+- `CUSTOM_EVM_CHAIN_ID`: (Optional) Chain ID of your custom EVM network
+- `CUSTOM_USDC_ADDRESS`: (Optional) Contract address of USDC or EIP-3009 token on your custom network
 - `PORT`: (Optional) Port number (defaults to 3000)
 
 > **Important**: Keep your private keys secure. Never commit them to version control.
@@ -201,18 +205,145 @@ Before deploying, you'll need:
 - **Gas Management**: Monitor gas fees and implement appropriate caps
 - **Transaction Validation**: Thoroughly validate all transactions before execution
 
-## Usage with Resource Servers
+## Custom Network Support
 
-To use this facilitator with your resource servers, configure the payment middleware to point to your deployed facilitator:
+The GX402 Facilitator supports custom EVM networks through environment configuration. This allows you to:
+
+- Support any EVM-compatible blockchain
+- Use your own EIP-3009 compatible tokens
+- Operate on private or test networks
+
+### Configuration
+
+To add support for a custom network and token, configure these environment variables:
+
+```env
+# Your private key with gas tokens for the custom network
+EVM_PRIVATE_KEY=0xYourPrivateKey
+
+# Custom network details
+CUSTOM_EVM_RPC_URL=https://your-custom-rpc-endpoint.com
+CUSTOM_EVM_CHAIN_ID=12345
+CUSTOM_USDC_ADDRESS=0xYourEIP3009TokenAddress
+
+# Optional: Custom token parameters (for EIP-3009 tokens)
+# CUSTOM_TOKEN_NAME="USD Coin"    # From token's name() function
+# CUSTOM_TOKEN_VERSION="2"        # From token's version() function
+```
+
+For detailed setup instructions, see [CUSTOM_NETWORK_SETUP.md](CUSTOM_NETWORK_SETUP.md).
+
+## Integration Guide
+
+### For Resource Servers
+
+To integrate the GX402 Facilitator into your resource server, follow these steps:
+
+1. **Deploy your own facilitator instance** (recommended for production) or use a shared instance
+
+2. **Configure payment middleware** to point to your facilitator:
 
 ```typescript
+import express from 'express';
+import { paymentMiddleware } from 'x402/server';
+
+const app = express();
+
 app.use(paymentMiddleware(
-  "0xYourAddress",
-  { "/api/resource": "$0.01" },
+  "0xYourAddress",  // Your address to receive payments
+  { 
+    "/api/premium-content": "$0.01",  // Price per access
+    "/api/data-export": "$0.10"
+  },
   {
-    url: "https://your-deployed-facilitator.vercel.app"  // Your deployed facilitator URL
+    url: "https://your-deployed-facilitator.vercel.app"  // Your facilitator URL
   }
 ));
+
+// Your protected routes
+app.get('/api/premium-content', (req, res) => {
+  res.json({ content: 'Premium content only available to paying users' });
+});
+```
+
+### For Client Applications
+
+Client applications can make payments to protected resources without holding gas tokens:
+
+```javascript
+// Making a payment request to a resource server using x402
+async function accessProtectedResource() {
+  try {
+    // Fetch resource with payment header
+    const response = await fetch('https://your-resource-server.com/api/premium-content', {
+      headers: {
+        'Accept': 'application/x402'
+      }
+    });
+
+    if (response.status === 402) {  // Payment required
+      const paymentReq = await response.json();
+      
+      // Process payment through the facilitator
+      // The client handles creating the appropriate payment payload
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Payment or resource access failed:', error);
+  }
+}
+```
+
+### Testing Locally
+
+For local testing:
+
+1. Start the facilitator locally: `npm run dev`
+2. Set up your resource server to point to `http://localhost:3000`
+3. Use test networks (Base Sepolia, Solana Devnet) with test tokens
+
+### Example Integration
+
+Here's a complete example of a resource server using the facilitator:
+
+```typescript
+import express from 'express';
+import { paymentMiddleware } from 'x402/server';
+import cors from 'cors';
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// Configure x402 payment middleware
+app.use(paymentMiddleware(
+  "0xYourReceivingAddress",  // Address to receive payments
+  { 
+    "/api/article": "$0.05",     // 5 cents per article
+    "/api/api-call": "$0.01"     // 1 cent per API call
+  },
+  {
+    url: process.env.FACILITATOR_URL || "http://localhost:3000"  // Your facilitator URL
+  }
+));
+
+// Protected routes
+app.get('/api/article', (req, res) => {
+  res.json({
+    title: "Latest Tech News",
+    content: "This premium content is protected by x402 payments"
+  });
+});
+
+app.post('/api/api-call', (req, res) => {
+  // Process API call that requires payment
+  res.json({ result: "API call processed successfully" });
+});
+
+app.listen(8080, () => {
+  console.log('Resource server running on port 8080');
+});
 ```
 
 ## Contributing

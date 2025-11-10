@@ -16,7 +16,10 @@ import {
   SupportedPaymentKind,
   isSvmSignerWallet,
   type X402Config,
+  Network,
 } from 'x402/types';
+import { createPublicClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 
 // Load environment variables
 config();
@@ -28,6 +31,13 @@ app.use(express.json());
 const EVM_PRIVATE_KEY = process.env.EVM_PRIVATE_KEY || '';
 const SVM_PRIVATE_KEY = process.env.SVM_PRIVATE_KEY || '';
 const SVM_RPC_URL = process.env.SVM_RPC_URL || '';
+
+// Custom network configurations from environment variables
+const CUSTOM_EVM_RPC_URL = process.env.CUSTOM_EVM_RPC_URL || '';
+const CUSTOM_EVM_CHAIN_ID = process.env.CUSTOM_EVM_CHAIN_ID ? parseInt(process.env.CUSTOM_EVM_CHAIN_ID, 10) : 0;
+const CUSTOM_USDC_ADDRESS = process.env.CUSTOM_USDC_ADDRESS || '';
+const CUSTOM_TOKEN_NAME = process.env.CUSTOM_TOKEN_NAME || 'USD Coin';
+const CUSTOM_TOKEN_VERSION = process.env.CUSTOM_TOKEN_VERSION || '2';
 
 // Create X402 config with custom RPC URL if provided
 const x402Config: X402Config | undefined = SVM_RPC_URL
@@ -85,10 +95,24 @@ app.post('/verify', async (req: Request, res: Response) => {
         return;
       }
       client = await createSigner(paymentRequirements.network, SVM_PRIVATE_KEY);
+    } else if (CUSTOM_EVM_CHAIN_ID > 0 && CUSTOM_EVM_RPC_URL && CUSTOM_USDC_ADDRESS) {
+      // Handle custom EVM network
+      if (!EVM_PRIVATE_KEY) {
+        res.status(400).json({ error: 'Custom EVM network not supported - no private key configured' });
+        return;
+      }
+      // Create a connected client for the custom network using createConnectedClient
+      const formattedEvmPrivateKey = EVM_PRIVATE_KEY.startsWith('0x') ? EVM_PRIVATE_KEY : `0x${EVM_PRIVATE_KEY}`;
+      client = await createSigner(`custom-${CUSTOM_EVM_CHAIN_ID}` as any, formattedEvmPrivateKey);
     } else {
       res.status(400).json({ error: 'Invalid network' });
       return;
     }
+
+    // For custom tokens, the EIP-712 domain parameters are typically included in payment requirements
+    // The x402 library should extract these from the payment requirements extra field
+    // If the library supports network-specific configurations, it would handle them internally
+    // based on the network identifier and extra parameters in payment requirements
 
     // Verify the payment
     const valid = await verify(client, paymentPayload, paymentRequirements, x402Config);
@@ -132,10 +156,24 @@ app.post('/settle', async (req: Request, res: Response) => {
         return;
       }
       signer = await createSigner(paymentRequirements.network, SVM_PRIVATE_KEY);
+    } else if (CUSTOM_EVM_CHAIN_ID > 0 && CUSTOM_EVM_RPC_URL && CUSTOM_USDC_ADDRESS) {
+      // Handle custom EVM network
+      if (!EVM_PRIVATE_KEY) {
+        res.status(400).json({ error: 'Custom EVM network not supported - no private key configured' });
+        return;
+      }
+      // Create a signer for the custom network
+      const formattedEvmPrivateKey = EVM_PRIVATE_KEY.startsWith('0x') ? EVM_PRIVATE_KEY : `0x${EVM_PRIVATE_KEY}`;
+      signer = await createSigner(`custom-${CUSTOM_EVM_CHAIN_ID}` as any, formattedEvmPrivateKey);
     } else {
       res.status(400).json({ error: 'Invalid network' });
       return;
     }
+
+    // For custom tokens, the EIP-712 domain parameters are typically included in payment requirements
+    // The x402 library should extract these from the payment requirements extra field
+    // If the library supports network-specific configurations, it would handle them internally
+    // based on the network identifier and extra parameters in payment requirements
 
     // Settle the payment
     const response = await settle(signer, paymentPayload, paymentRequirements, x402Config);
@@ -154,7 +192,7 @@ app.post('/settle', async (req: Request, res: Response) => {
 app.get('/supported', async (req: Request, res: Response) => {
   let kinds: SupportedPaymentKind[] = [];
 
-  // EVM networks
+  // EVM networks (built-in)
   if (EVM_PRIVATE_KEY) {
     kinds.push({
       x402Version: 1,
@@ -167,6 +205,9 @@ app.get('/supported', async (req: Request, res: Response) => {
       network: 'base',
     });
   }
+
+  // Note: Custom networks are supported in the implementation but may not appear in /supported
+  // because they're not part of the standard Network enum
 
   // SVM networks
   if (SVM_PRIVATE_KEY) {

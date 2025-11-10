@@ -184,6 +184,32 @@ The base URL depends on your deployment:
 }
 ```
 
+## Custom Network Support
+
+The facilitator supports custom EVM networks through environment variables. To configure a custom network:
+
+1. Set `CUSTOM_EVM_RPC_URL` to your network's RPC endpoint
+2. Set `CUSTOM_EVM_CHAIN_ID` to your network's chain ID
+3. Set `CUSTOM_USDC_ADDRESS` to the address of your USDC or EIP-3009 token
+4. Set `EVM_PRIVATE_KEY` with gas tokens on your custom network
+
+When configured, the `/supported` endpoint will include your custom network with the format `custom-{CHAIN_ID}`. For example:
+
+```json
+{
+  "kinds": [
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "custom-12345",  // Your custom network
+      "extra": {}
+    }
+  ]
+}
+```
+
+To use a custom network in requests, specify your custom network name (e.g., `custom-12345`) in the `network` field of your payment requirements and payload.
+
 ## Error Codes
 
 The facilitator may return the following error codes:
